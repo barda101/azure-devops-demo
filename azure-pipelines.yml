@@ -1,0 +1,40 @@
+trigger:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+jobs:
+  - job: CICD
+    displayName: CI/CD Demo
+    steps:
+
+      - script: |
+          docker build -t demo-app:$(Build.BuildId) .
+        displayName: Build Docker Image
+
+      - script: |
+          docker run --rm demo-app:$(Build.BuildId) pytest -v
+        displayName: Run Tests
+
+      - script: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            demo-app:$(Build.BuildId)
+        displayName: Security Scan
+
+      - script: |
+          docker run -d --name demo-app \
+            -p 8080:8080 demo-app:$(Build.BuildId)
+
+          curl --fail --retry 10 --retry-connrefused \
+            http://localhost:8080/health
+        displayName: Deploy and Verify
+
+      - script: |
+          docker rm -f demo-app || true
+        displayName: Cleanup
+        condition: always()
